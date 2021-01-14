@@ -1,0 +1,165 @@
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+import pandas as pd
+
+import os
+
+driver = webdriver.Chrome('chromedriver.exe') # using 'chromedriver.exe'
+driver.get("https://www.youtube.com")    # get URL's page source
+
+
+elem = driver.find_element_by_css_selector("#search") # navigating to search
+elem.send_keys("Kishore kumar")     # searching Kishore Kumar
+elem.send_keys(Keys.RETURN)     # subitting the given text, "Kishore kumar" in this case
+assert "No results found" not in driver.page_source     # To ensure that some results are found, make an assertion
+
+all_video_links = driver.find_elements_by_xpath('//div[@id = "meta"]//*[@id="video-title"]')
+
+nbr = 1
+title=[] #creating empty list for titles
+link=[] #creating empty list for links
+view=[] #creating empty list for views
+
+result = {} # creating a empty dictionary
+
+for elem in all_video_links:
+    
+    if(nbr<=10):
+        title.append(str(elem.get_attribute("title"))) # scrapping title using get_attribute function
+        link.append(elem.get_attribute("href")) # scrapping link using get_attribute function
+        label = elem.get_attribute("aria-label") # scrapping label which helps us with views
+        view.append(label.split("by ")[1].split(" ")[-2].replace(",","")) # getting views count from labels
+        
+        result['Title'] = title # copying the "title" list into dictionary
+        result['Link'] = link # copying the "link" list into dictionary
+        result['Views'] = view # copying the "view" list into dictionary
+        
+        nbr=nbr+1
+
+print(result) #printing result, which is a dictionary containing titles,links and views.
+
+
+all_channel_data = driver.find_elements_by_xpath('//div[@id = "meta"]//*[@id="byline"]')
+all_time_data= driver.find_elements_by_xpath('//div[@id = "meta"]//*[@id="metadata-line"]/span[2]')
+nbr = 1
+channel=[]
+
+for elem1 in all_channel_data:
+    if(nbr<=10):
+        channel.append(str(elem1.get_attribute("title"))) #scrapping channel name
+        result['Channel'] = channel #adding channel to dictionary "result"
+        nbr=nbr+1
+        
+nbr = 1
+time=[]
+
+for elem2 in all_time_data:
+    if(nbr<=10):
+        time.append(elem2.text)
+        result['Upload-Time'] = time #scrapping upload time
+        nbr=nbr+1 #adding upload time to dictionary "result"
+        
+print(result) #print updated dictionary 
+
+df = pd.DataFrame(result) #converting dictionary to dataframe
+df
+
+count = 0
+for each_link in link: #for loop will iterate for each of the 10links we captured above
+    count = count + 1
+    driver.get(each_link) #opening each link as iterate through for loop 
+    time.sleep(30) 
+    driver.execute_script("window.scrollTo(0, 300)") #scroll down so that SORT BY option of commentry section gets loaded
+    time.sleep(10)
+
+    driver.find_element_by_id("label-icon").click() #clicks on the SORT BY option for dropdown values
+    time.sleep(5)
+
+    driver.find_element_by_xpath('//*[@id="menu"]/a[1]/paper-item/paper-item-body/div[1]').click() #selects the first dropdown value i.e. TOP COMMENTS
+    time.sleep(10)
+
+    driver.execute_script('window.scrollTo(1, 8000);')
+    time.sleep(10)
+    driver.execute_script('window.scrollTo(1, 8000);')
+    time.sleep(10)
+
+
+    all_comments_pane = driver.find_elements_by_xpath('//ytd-comment-thread-renderer[@class="style-scope ytd-item-section-renderer"]')
+
+    #creating empty list for users,comments,published_time,upvotes,downvotes and replies
+    users=[] 
+    comment=[] 
+    published_time=[] 
+    upvotes=[]
+    downvotes=[]
+    replies=[]
+
+    comm_dict={} #creating a empty dictionary
+    nbr=1
+
+    for each in all_comments_pane:  
+
+        if nbr<=50:    
+            try:
+                user=each.find_element_by_xpath('.//a[@id="author-text"]/span[@class="style-scope ytd-comment-renderer"]').text
+                users.append(str(user)) #scrapping user name for each comment
+            except:
+                users.append("No user name found")
+
+            try:
+                comments=each.find_element_by_xpath('.//yt-formatted-string[@id="content-text" and @slot="content"]').text
+                comment.append(str(comments)) #scrapping content in each comment
+            except:
+                comment.append("No comments")
+
+            try:
+                published=each.find_element_by_xpath('.//yt-formatted-string[@id="published-time-text"]/a[@class="yt-simple-endpoint style-scope yt-formatted-string"]').text
+                published_time.append(str(published)) #scrapping published time for each comment
+            except:
+                published_time.append("No published time found")
+
+            try:
+                upvote=each.find_element_by_xpath('.//span[@id="vote-count-middle" and contains(@aria-label,"likes")]').text
+                upvotes.append(int(upvote)) #scrapping upvotes for each comment
+            except:
+                upvotes.append(0)
+
+            try:
+                downvote=each.find_element_by_xpath('.//span[@id="vote-count-middle" and contains(@aria-label,"dislikes")]').text
+                downvotes.append(int(downvote)) #scrapping downvotes for each comment
+            except:
+                downvotes.append(0)
+
+            try:
+                reply=str(each.find_element_by_xpath('.//div[@class="more-button style-scope ytd-comment-replies-renderer"]/span[@class="style-scope ytd-comment-replies-renderer"]').text)
+                reply=reply.replace("View ","") #Stripping the unnecessary text to arrive at number of replies
+                reply=reply.replace(" replies","") #Stripping the unnecessary text to arrive at number of replies
+                reply=reply.replace("reply","1") #Incase of only one reply we replace the text reply with 1
+                replies.append(int(reply)) #scrapping number of replies for each comment
+
+            except:
+                replies.append(0)
+
+
+            nbr=nbr+1
+    
+    # adding all the required data in lists to dictionary
+    comm_dict['User_handle'] = users
+    comm_dict['Link'] = each_link
+    comm_dict['Comments']=comment
+    comm_dict['Published Time']=published_time
+    comm_dict['Upvotes']=upvotes
+    comm_dict['Downvotes']=downvotes
+    comm_dict['Replies'] = replies
+
+    #print(comm_dict)
+
+    df1 = pd.DataFrame(comm_dict) #converting dictionary to dataframe
+    if count == 1:
+        df2 = df1
+    else:
+        df2 = df2.append(df1) #appending all the dataframes to populate the required data for all the 50 comments
+print(df2)
+
+df3 = df.merge(df2,on='Link') 
+df3
